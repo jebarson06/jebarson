@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Simple HTML Login authentication system</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root{
+      --max-width:720px;
+      --pad:24px;
+      --muted:#666;
+      --accent:#0366d6;
+      --bg:#fff;
+      --border:#ddd;
+      --success:#1a7f37;
+      --danger:#c53030;
+      --radius:6px;
+      --btn-pad:8px 12px;
+    }
+
+    *{box-sizing:border-box}
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      max-width: var(--max-width);
+      margin: var(--pad) auto;
+      padding: 0 12px;
+      background: linear-gradient(180deg,#f7f9fc,#fff);
+      color: #111;
+    }
+
+    h1{margin:0 0 12px 0}
+    nav{margin-bottom:12px}
+    nav a {
+      margin-right:12px;
+      cursor:pointer;
+      color:var(--accent);
+      text-decoration:underline;
+      font-weight:500;
+    }
+
+    section {
+      display:none;
+      padding:12px;
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      margin-top:12px;
+      background: var(--bg);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    }
+    section.active { display:block; }
+
+    .form label{
+      display:block;
+      margin:8px 0;
+      font-size:14px;
+      color:var(--muted);
+    }
+    input {
+      padding:8px;
+      margin-top:6px;
+      width:100%;
+      border:1px solid #e2e8f0;
+      border-radius:4px;
+      background:#fff;
+      font-size:14px;
+    }
+
+    .row { display:flex; gap:8px; }
+
+    .btn {
+      padding: var(--btn-pad);
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight:600;
+    }
+    .btn:hover { opacity:0.95 }
+
+    .msg { margin:8px 0; color:var(--success); }
+    .err { margin:8px 0; color:var(--danger); }
+
+    #welcome { font-weight:600; color:#222; }
+
+    /* responsive */
+    @media (max-width:480px){
+      :root{ --pad:12px }
+      body{ padding:0 10px; }
+      nav a{ display:inline-block; margin-bottom:8px; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Simple Login Demo (HTML + JS)</h1>
+  <nav>
+    <a id="nav-login">Login</a>
+    <a id="nav-register">Register</a>
+    <a id="nav-dashboard">Dashboard</a>
+  </nav>
+
+  <section id="login" class="active">
+    <h2>Login</h2>
+    <form id="loginForm" class="form">
+      <label>Username<input name="username" required></label>
+      <label>Password<input name="password" type="password" required></label>
+      <button type="submit" class="btn">Login</button>
+    </form>
+    <div id="loginError" class="err"></div>
+  </section>
+
+  <section id="register">
+    <h2>Register</h2>
+    <form id="registerForm" class="form">
+      <label>Username<input name="username" required></label>
+      <label>Password<input name="password" type="password" required></label>
+      <button type="submit" class="btn">Register</button>
+    </form>
+    <div id="regMsg" class="msg"></div>
+    <div id="regError" class="err"></div>
+  </section>
+
+  <section id="dashboard">
+    <h2>Dashboard</h2>
+    <p id="welcome"></p>
+    <button id="logoutBtn" class="btn">Logout</button>
+  </section>
+
+  <script>
+    // simple view switching
+    const views = {
+      login: document.getElementById('login'),
+      register: document.getElementById('register'),
+      dashboard: document.getElementById('dashboard')
+    };
+    function show(view) {
+      Object.values(views).forEach(v => v.classList.remove('active'));
+      views[view].classList.add('active');
+      if (view === 'dashboard') renderDashboard();
+    }
+    document.getElementById('nav-login').onclick = () => show('login');
+    document.getElementById('nav-register').onclick = () => show('register');
+    document.getElementById('nav-dashboard').onclick = () => {
+      if (sessionStorage.getItem('loggedInUser')) show('dashboard'); else show('login');
+    };
+
+    // SHA-256 hashing via Web Crypto
+    async function hashPassword(password) {
+      const enc = new TextEncoder().encode(password);
+      const digest = await crypto.subtle.digest('SHA-256', enc);
+      return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2,'0')).join('');
+    }
+
+    // user storage: localStorage key "user:{username}" -> JSON {hash: ...}
+    function userKey(username){ return `user:${username}`; }
+
+    // Register handler
+    document.getElementById('registerForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      const u = f.username.value.trim();
+      const p = f.password.value;
+      document.getElementById('regMsg').textContent = '';
+      document.getElementById('regError').textContent = '';
+      if (!u || !p) { document.getElementById('regError').textContent = 'Missing fields.'; return; }
+      if (localStorage.getItem(userKey(u))) { document.getElementById('regError').textContent = 'Username taken.'; return; }
+      const h = await hashPassword(p);
+      localStorage.setItem(userKey(u), JSON.stringify({ hash: h }));
+      document.getElementById('regMsg').textContent = 'Registered. You can now log in.';
+      f.reset();
+    });
+
+    // Login handler
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      const u = f.username.value.trim();
+      const p = f.password.value;
+      document.getElementById('loginError').textContent = '';
+      const stored = localStorage.getItem(userKey(u));
+      if (!stored) { document.getElementById('loginError').textContent = 'Invalid credentials.'; return; }
+      const { hash } = JSON.parse(stored);
+      const h = await hashPassword(p);
+      if (h === hash) {
+        sessionStorage.setItem('loggedInUser', u);
+        f.reset();
+        show('dashboard');
+      } else {
+        document.getElementById('loginError').textContent = 'Invalid credentials.';
+      }
+    });
+
+    function renderDashboard(){
+      const u = sessionStorage.getItem('loggedInUser');
+      document.getElementById('welcome').textContent = u ? `Welcome, ${u}!` : 'Not logged in.';
+    }
+
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+      sessionStorage.removeItem('loggedInUser');
+      show('login');
+    });
+
+    // auto-show dashboard if already logged in
+    if (sessionStorage.getItem('loggedInUser')) show('dashboard');
+  </script>
+</body>
+</html>
